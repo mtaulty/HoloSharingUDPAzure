@@ -1,0 +1,44 @@
+﻿<Page
+    x:Class="UwpApp.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:UwpApp"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.Resources>
+            <Style TargetType="TextBlock">
+                <Setter Property="FontSize" Value="24"/>
+                <Setter Property="TextAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,5,0,0"/>
+            </Style>
+        </Grid.Resources>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock>
+                <Run>Using IP Address of </Run>          
+                <Run Text="{x:Bind IPAddress, Mode=OneWay}"/>
+            </TextBlock>
+            <TextBlock>
+                <Run>Using Message ID of </Run>          
+                <Run Text="{x:Bind MessageId, Mode=OneWay}"/>
+            </TextBlock>
+            <TextBlock>
+                <Run>Sent </Run>
+                <Run Text="{x:Bind SentCount, Mode=OneWay}"/>
+                <Run> Messages</Run>
+            </TextBlock>
+            <TextBlock>
+                <Run>Received </Run>
+                <Run Text="{x:Bind ReceivedCount, Mode=OneWay}"/>
+                <Run>Messages From </Run>
+                <Run Text="{x:Bind SourceCount, Mode=OneWay}"/>
+                <Run> Different Sources</Run>
+            </TextBlock>
+            <Button FontSize="24" Margin="5" Content="Send Message"
+                    Click="{x:Bind OnSendMessage}"
+                    HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</Page>
