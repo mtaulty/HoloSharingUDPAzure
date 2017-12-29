@@ -19,6 +19,10 @@ public class TestScript : MonoBehaviour
         {
             this.CreateSharedCube();
         }
+        else if (this.lastHitCube.GetComponent<Rotate>() == null)
+        {
+            this.lastHitCube.AddComponent<Rotate>();
+        }
         else
         {
             this.DeleteSharedCube();

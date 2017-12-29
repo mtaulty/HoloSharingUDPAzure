@@ -15,7 +15,8 @@
     {
         public SharedCreator(
             MessageService messageService,
-            AzureStorageDetails storageDetails)
+            AzureStorageDetails storageDetails,
+            SynchronizationDetails syncDetails)
         {
             this.worldAnchorMap = new WorldAnchorMap();
 
@@ -27,6 +28,13 @@
             this.messageService.Registrar.RegisterMessageHandler<DeletedObjectMessage>(
                 this.OnObjectDeletedRemotely);
 
+            this.syncDetails = syncDetails;
+
+            if (this.syncDetails.SynchronizeTransforms)
+            {
+                this.messageService.Registrar.RegisterMessageHandler<TransformMessage>(
+                    this.OnObjectTransformedRemotely);
+            }
             this.storageDetails = storageDetails;
 
             this.GameObjectCreator = new PrimitiveGameObjectCreator();
@@ -92,6 +100,7 @@
                                 bits,
                                 (worked, bytes) =>
                                 {
+                                    this.ConfigureTransformSynchronizer(gameObject);
                                     this.SendCreatedObjectMessage(
                                         gameObjectType, gameObject, worldAnchorParent, callback);
                                 }
@@ -106,6 +115,8 @@
             }
             else
             {
+                this.ConfigureTransformSynchronizer(gameObject);
+
                 // Send a message to the world telling them about the new object.
                 this.SendCreatedObjectMessage(
                     gameObjectType, gameObject, worldAnchorParent, callback);
@@ -114,9 +125,26 @@
             // Send a message to the world telling them about the new object - it's
             // important to note that we pass whether we newly created an anchor or
             // not as that impacts the message that we send.
+            this.ConfigureTransformSynchronizer(gameObject);
             this.SendCreatedObjectMessage(
                 gameObjectType, gameObject, worldAnchorParent, callback);
 #endif
+        }
+        void ConfigureTransformSynchronizer(GameObject gameObject)
+        {
+            if (this.syncDetails.SynchronizeTransforms)
+            {
+                var synchronizer = gameObject.AddComponent<TransformSynchronizer>();
+
+                // TODO: Come up with a better way of doing this, it's ugly.
+                synchronizer.Initialise(
+                    this.syncDetails.SynchronizationIntervalSeconds,
+                    message =>
+                    {
+                        this.messageService.Send<TransformMessage>(message);
+                    }
+                );
+            }
         }
         void SendCreatedObjectMessage(
             string gameObjectType,
@@ -210,8 +238,9 @@
                         }                               
                     }
                 );
-            }  
+            }
 #endif
+            this.ConfigureTransformSynchronizer(gameObject);
         }
         void OnObjectDeletedRemotely(object obj)
         {
@@ -245,8 +274,33 @@
                 }
             );
         }
+        void OnObjectTransformedRemotely(object obj)
+        {
+            var message = obj as TransformMessage;
+
+            if (message != null)
+            {
+                // Should we keep our own map of IDs<->GameObject or should we just
+                // let Unity look it up for us?
+                var gameObject = GameObject.Find(message.ObjectId);
+
+                if (gameObject != null)
+                {
+                    var synchronizer = gameObject.GetComponent<TransformSynchronizer>();
+                    if (synchronizer != null)
+                    {
+                        synchronizer.UpdateTransforms(
+                            message.LocalPosition,
+                            message.LocalRotation,
+                            message.LocalScale);
+                    }
+                }
+
+            }
+        }
         MessageService messageService;
         WorldAnchorMap worldAnchorMap;
         AzureStorageDetails storageDetails;
+        SynchronizationDetails syncDetails;
     }
 }

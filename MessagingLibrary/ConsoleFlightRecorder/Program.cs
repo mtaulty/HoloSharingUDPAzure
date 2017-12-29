@@ -5,15 +5,41 @@
     using System;
     using System.Collections.Generic;
     using System.Linq;
-
+    using System.Threading;
 
     class Program
     {
+        class MessageTime
+        {
+            public Message Message;
+            public TimeSpan Delay;
+        }
+        static void SendMessage(MessageService messageService, Message message)
+        {
+            // TODO: all this 'use of types' is getting ugly and especially when trying to
+            // do something as simple as call the Send() method. Needs resolving.
+            switch (message.GetType().Name)
+            {
+                case "CreatedObjectMessage":
+                    messageService.Send<CreatedObjectMessage>(message as CreatedObjectMessage);
+                    break;
+                case "DeletedObjectMessage":
+                    messageService.Send<DeletedObjectMessage>(message as DeletedObjectMessage);
+                    break;
+                case "TransformMessage":
+                    messageService.Send<TransformMessage>(message as TransformMessage);
+                    break;
+                default:
+                    break;
+            }
+        }
+
         static void Main(string[] args)
         {
             var registrar = new MessageRegistrar();
+            var lastMessageArrivalTime = DateTime.Now;
 
-            List<Message> messageList = new List<Message>();
+            List<MessageTime> messageList = new List<MessageTime>();
 
             var createdKey = registrar.RegisterMessageFactory<CreatedObjectMessage>(
                 () => new CreatedObjectMessage());
@@ -21,17 +47,28 @@
             var deletedKey = registrar.RegisterMessageFactory<DeletedObjectMessage>(
                 () => new DeletedObjectMessage());
 
+            var transformKey = registrar.RegisterMessageFactory<TransformMessage>(
+                () => new TransformMessage());
+
             var handler = new Action<object>(
                 o =>
                 {
-                    var messageType = (o is CreatedObjectMessage) ? "creation" : "deletion";
-                    Console.WriteLine($"Received {messageType} message");
+                    // Yuk, I need to fix this dependency on TYPEs as it's getting out of hand already :-)
+                    Console.WriteLine($"Received {o.GetType().Name} message");
 
-                    messageList.Add((Message)o);
+                    messageList.Add(
+                        new MessageTime()
+                        {
+                            Message = o as Message,
+                            Delay = DateTime.Now - lastMessageArrivalTime
+                        }
+                    );
+                    lastMessageArrivalTime = DateTime.Now;
                 }
             );
             registrar.RegisterMessageHandler<CreatedObjectMessage>(handler);
             registrar.RegisterMessageHandler<DeletedObjectMessage>(handler);
+            registrar.RegisterMessageHandler<TransformMessage>(handler);
 
             var listenIpAddress = NetworkUtility.GetConnectedIpAddresses(false).First().ToString();
 
@@ -42,7 +79,7 @@
 
             Console.WriteLine("Opened message channel, waiting for messages");
             Console.WriteLine(
-                "Press R to replay all messages, M to consume & play oldest, N to replay oldest, X to quit");
+                "Press R to replay messages in list, S to replay with delay timings, M to consume & play oldest, N to replay oldest, X to quit");
 
             while (true)
             {
@@ -52,7 +89,7 @@
                 {
                     break;
                 }
-                if (key.Key == ConsoleKey.R)
+                if ((key.Key == ConsoleKey.R) || (key.Key == ConsoleKey.S))
                 {
                     if (messageList.Count == 0)
                     {
@@ -62,17 +99,15 @@
                     {
                         Console.WriteLine($"Replaying {messageList.Count} messages");
                         var msgs = messageList;
-                        messageList = new List<Message>();
+                        messageList = new List<MessageTime>();
 
                         foreach (var msg in msgs)
                         {
-                            if (msg.GetType() == typeof(CreatedObjectMessage))
+                            SendMessage(messageService, msg.Message);
+
+                            if (key.Key == ConsoleKey.S)
                             {
-                                messageService.Send((CreatedObjectMessage)msg, null);
-                            }
-                            else
-                            {
-                                messageService.Send((DeletedObjectMessage)msg, null);
+                                Thread.Sleep(msg.Delay);
                             }
                         }
                     }
@@ -89,14 +124,7 @@
                         {
                             messageList.RemoveAt(0);
                         }
-                        if (msg is CreatedObjectMessage)
-                        {
-                            messageService.Send((CreatedObjectMessage)msg);
-                        }
-                        else
-                        {
-                            messageService.Send((DeletedObjectMessage)msg);
-                        }
+                        SendMessage(messageService, msg.Message);
                     }
                     else
                     {

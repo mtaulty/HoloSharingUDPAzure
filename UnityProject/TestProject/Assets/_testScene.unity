@@ -303,6 +303,9 @@ MonoBehaviour:
     AzureAccountName: 
     AzureKeyBase64: 
     AzureContainerName: 
+  SynchronizationDetails:
+    SynchronizeTransforms: 1
+    SynchronizationIntervalSeconds: 0.05
 --- !u!114 &1444093620
 MonoBehaviour:
   m_ObjectHideFlags: 0

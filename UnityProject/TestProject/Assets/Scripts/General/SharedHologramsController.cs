@@ -12,6 +12,8 @@
     {
         public AzureStorageDetails StorageDetails;
 
+        public SynchronizationDetails SynchronizationDetails;
+
         public SharedHologramsController()
         {
             if (Instance != null)
@@ -29,6 +31,8 @@
                 () => new CreatedObjectMessage());
             registrar.RegisterMessageFactory<DeletedObjectMessage>(
                 () => new DeletedObjectMessage());
+            registrar.RegisterMessageFactory<TransformMessage>(
+                () => new TransformMessage());
 
             // For the moment, I'm going to let this code try and figure out 'the right thing'
             // but we could surface these parameters to allow for more tweaking
@@ -39,8 +43,9 @@
                 this.messageService = new MessageService(registrar, localNetworkAddress);
                 this.messageService.Open();
                 this.sharedCreator = new SharedCreator(
-                    this.messageService, 
-                    this.StorageDetails);
+                    this.messageService,
+                    this.StorageDetails,
+                    this.SynchronizationDetails);
             }
         }
         public SharedCreator Creator
@@ -55,7 +60,6 @@
             get;
             private set;
         }
-        ICreateGameObjects hologramResolver;
         SharedCreator sharedCreator;
         MessageService messageService;
     }
