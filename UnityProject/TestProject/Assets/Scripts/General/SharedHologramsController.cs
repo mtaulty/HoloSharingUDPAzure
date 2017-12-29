@@ -38,7 +38,9 @@
             {
                 this.messageService = new MessageService(registrar, localNetworkAddress);
                 this.messageService.Open();
-                this.sharedCreator = new SharedCreator(this.messageService, this.StorageDetails);
+                this.sharedCreator = new SharedCreator(
+                    this.messageService, 
+                    this.StorageDetails);
             }
         }
         public SharedCreator Creator
@@ -53,6 +55,7 @@
             get;
             private set;
         }
+        ICreateGameObjects hologramResolver;
         SharedCreator sharedCreator;
         MessageService messageService;
     }

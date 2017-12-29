@@ -13,7 +13,9 @@
 
     public class SharedCreator
     {
-        public SharedCreator(MessageService messageService, AzureStorageDetails storageDetails)
+        public SharedCreator(
+            MessageService messageService,
+            AzureStorageDetails storageDetails)
         {
             this.worldAnchorMap = new WorldAnchorMap();
 
@@ -26,6 +28,13 @@
                 this.OnObjectDeletedRemotely);
 
             this.storageDetails = storageDetails;
+
+            this.GameObjectCreator = new PrimitiveGameObjectCreator();
+        }
+        public ICreateGameObjects GameObjectCreator
+        {
+            get;
+            set;
         }
         public void Create(
             string gameObjectType,
@@ -34,13 +43,27 @@
             Vector3 scale,
             Action<GameObject> callback)
         {
-            var gameObject = CreateGameObject(gameObjectType, position, forward, scale);
-
+            CreateGameObject(
+                gameObjectType,
+                position,
+                forward,
+                scale,
+                null,
+                gameObject =>
+                {
+                    this.HandleLocallyCreateGameObject(gameObject, gameObjectType, callback);
+                }
+            );
+        }
+        void HandleLocallyCreateGameObject(GameObject gameObject, string gameObjectType, Action<GameObject> callback)
+        {
             // Do we have a world anchor for this position already?
             GameObject worldAnchorParent = null;
 
             bool addedAnchor = this.worldAnchorMap.GetOrAddWorldAnchorForPosition(
-                position, forward, out worldAnchorParent);
+                gameObject.transform.position,
+                gameObject.transform.forward,
+                out worldAnchorParent);
 
             // parent the GameObject off its anchor without moving it, the assumption
             // being that if didn't already have an anchor then we just created it
@@ -97,7 +120,7 @@
         }
         void SendCreatedObjectMessage(
             string gameObjectType,
-            GameObject gameObject, 
+            GameObject gameObject,
             GameObject worldAnchorParent,
             Action<GameObject> callback)
         {
@@ -125,59 +148,70 @@
         }
         void OnObjectCreatedRemotely(object obj)
         {
-            var msg = obj as CreatedObjectMessage;
+            var message = obj as CreatedObjectMessage;
 
-            if (msg != null)
+            if (message != null)
             {
-                bool newAnchor = false;
-
                 // Make the object locally first - note the effective dummy values for
                 // position and forward.
-                var gameObject = CreateGameObject(
-                    msg.ObjectType, Vector3.zero, Vector3.forward, msg.LocalScale, msg.ObjectId);
+                CreateGameObject(
+                    message.ObjectType,
+                    Vector3.zero,
+                    Vector3.forward,
+                    message.LocalScale,
+                    message.ObjectId,
+                    gameObject =>
+                    {
+                        this.HandleRemotelyCreatedGameObject(gameObject, message);
+                    }
+                );
+            }
+        }
+        void HandleRemotelyCreatedGameObject(GameObject gameObject, CreatedObjectMessage message)
+        {
+            bool newAnchor = false;
 
-                // Do we already know the anchor that the GameObject is associated with?
-                var anchorObject = this.worldAnchorMap.GetById(msg.ParentAnchorId);
+            // Do we already know the anchor that the GameObject is associated with?
+            var anchorObject = this.worldAnchorMap.GetById(message.ParentAnchorId);
 
-                newAnchor = (anchorObject == null);
+            newAnchor = (anchorObject == null);
 
-                // If we don't have one...
-                if (newAnchor)
-                {
-                    // Make one but it's not anchored at this point
-                    anchorObject = this.worldAnchorMap.AddAnchorWithExistingIdAtOrigin(
-                        msg.ParentAnchorId);
-                }
-                // Parent the object off the anchor object, hoping that this
-                // will be ok even if we later go on to import the anchor.
-                gameObject.transform.SetParent(anchorObject.transform, false);
-                gameObject.transform.localPosition = msg.LocalPosition;
-                gameObject.transform.localRotation = msg.LocalRotation;
+            // If we don't have one...
+            if (newAnchor)
+            {
+                // Make one but it's not anchored at this point
+                anchorObject = this.worldAnchorMap.AddAnchorWithExistingIdAtOrigin(
+                    message.ParentAnchorId);
+            }
+            // Parent the object off the anchor object, hoping that this
+            // will be ok even if we later go on to import the anchor.
+            gameObject.transform.SetParent(anchorObject.transform, false);
+            gameObject.transform.localPosition = message.LocalPosition;
+            gameObject.transform.localRotation = message.LocalRotation;
 
 #if !UNITY_EDITOR
-                if (newAnchor)
-                {
-                    // We need to go off to the cloud and download that anchor.
-                    AzureBlobStorageHelper.DownloadWorldAnchorBlob(
-                        this.storageDetails, 
-                        msg.ParentAnchorId,
-                        (worked, bits) =>
+            if (newAnchor)
+            {
+                // We need to go off to the cloud and download that anchor.
+                AzureBlobStorageHelper.DownloadWorldAnchorBlob(
+                    this.storageDetails, 
+                    message.ParentAnchorId,
+                    (worked, bits) =>
+                    {
+                        if (worked)
                         {
-                            if (worked)
-                            {
-                                // Having got the bits, we need to import them onto the
-                                // game object which means that this object is likely
-                                // to change its position and orientation.
-                                WorldAnchorImportExportHelper.ImportWorldAnchorToGameObject(
-                                    anchorObject,
-                                    bits,
-                                    null);
-                            }                               
-                        }
-                    );
-                }  
+                            // Having got the bits, we need to import them onto the
+                            // game object which means that this object is likely
+                            // to change its position and orientation.
+                            WorldAnchorImportExportHelper.ImportWorldAnchorToGameObject(
+                                anchorObject,
+                                bits,
+                                null);
+                        }                               
+                    }
+                );
+            }  
 #endif
-            }
         }
         void OnObjectDeletedRemotely(object obj)
         {
@@ -192,27 +226,24 @@
                 }
             }
         }
-        static GameObject CreateGameObject(
-            string gameObjectType, 
+        void CreateGameObject(
+            string gameObjectType,
             Vector3 position,
             Vector3 forward,
             Vector3 scale,
-            string name = null)
+            string name,
+            Action<GameObject> callback)
         {
-            // Later, we need to add the ability to create objects other than
-            // primitives (of course) but, for now, we will just use primitives
-            // This will throw on a bad type...
-            var objectType = (PrimitiveType)Enum.Parse(typeof(PrimitiveType), gameObjectType);
-
-            // Create the object itself.
-            var gameObject = GameObject.CreatePrimitive(objectType);
-            gameObject.transform.position = position;
-            gameObject.transform.forward = forward;
-            gameObject.transform.localScale = scale;
-
-            gameObject.name = name ?? Guid.NewGuid().ToString();
-
-            return (gameObject);
+            this.GameObjectCreator.CreateGameObject(gameObjectType,
+                gameObject =>
+                {
+                    gameObject.transform.position = position;
+                    gameObject.transform.forward = forward;
+                    gameObject.transform.localScale = scale;
+                    gameObject.name = name ?? Guid.NewGuid().ToString();
+                    callback(gameObject);
+                }
+            );
         }
         MessageService messageService;
         WorldAnchorMap worldAnchorMap;
