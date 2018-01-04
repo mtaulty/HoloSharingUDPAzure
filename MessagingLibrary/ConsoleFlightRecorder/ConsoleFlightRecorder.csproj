@@ -49,7 +49,12 @@
     <Compile Include="Messages\BinaryReaderExtensions.cs" />
     <Compile Include="Messages\CreatedObjectMessage.cs" />
     <Compile Include="Messages\DeletedObjectMessage.cs" />
+    <Compile Include="Messages\DeviceMessage.cs" />
+    <Compile Include="Messages\ExistingDeviceMessage.cs" />
     <Compile Include="Messages\IdentifiedObjectMessage.cs" />
+    <Compile Include="Messages\NewDeviceAnnouncementMessage.cs" />
+    <Compile Include="Messages\SceneRequestMessage.cs" />
+    <Compile Include="Messages\SceneResponseObjectMessage.cs" />
     <Compile Include="Messages\TransformMessage.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

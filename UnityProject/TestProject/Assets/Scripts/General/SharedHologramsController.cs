@@ -26,14 +26,6 @@
         {
             var registrar = new MessageRegistrar();
 
-            // Register the message types that we know about.
-            registrar.RegisterMessageFactory<CreatedObjectMessage>(
-                () => new CreatedObjectMessage());
-            registrar.RegisterMessageFactory<DeletedObjectMessage>(
-                () => new DeletedObjectMessage());
-            registrar.RegisterMessageFactory<TransformMessage>(
-                () => new TransformMessage());
-
             // For the moment, I'm going to let this code try and figure out 'the right thing'
             // but we could surface these parameters to allow for more tweaking
             var localNetworkAddress = NetworkUtility.GetConnectedIpAddresses(false).FirstOrDefault();

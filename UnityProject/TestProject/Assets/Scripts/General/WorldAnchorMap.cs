@@ -13,6 +13,13 @@
         {
             this.anchors = new List<GameObject>();
         }
+        public bool HasAnchors
+        {
+            get
+            {
+                return (this.anchors.Count > 0);
+            }
+        }
         public bool GetOrAddWorldAnchorForPosition(
             Vector3 position, 
             Vector3 forward,

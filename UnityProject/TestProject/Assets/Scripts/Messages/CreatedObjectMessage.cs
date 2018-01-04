@@ -24,23 +24,25 @@
         public string ObjectType { get; set; }
         public string ParentAnchorId { get; set; }
 
-        public static void Send(
+        public static CreatedObjectMessage Send(
             MessageService messageService, 
             string objectType, 
             GameObject gameObject,
             GameObject worldAnchorParent)
         {
-            messageService.Send(
-                new CreatedObjectMessage()
-                {
-                    ObjectId = gameObject.name,
-                    ObjectType = objectType,
-                    ParentAnchorId = worldAnchorParent.name,
-                    LocalPosition = gameObject.transform.localPosition,
-                    LocalScale = gameObject.transform.localScale,
-                    LocalRotation = gameObject.transform.localRotation
-                }
-            );
+            var msg = new CreatedObjectMessage()
+            {
+                ObjectId = gameObject.name,
+                ObjectType = objectType,
+                ParentAnchorId = worldAnchorParent.name,
+                LocalPosition = gameObject.transform.localPosition,
+                LocalScale = gameObject.transform.localScale,
+                LocalRotation = gameObject.transform.localRotation
+            };
+
+            messageService.Send(msg);
+
+            return (msg);
         }
     }
 }
