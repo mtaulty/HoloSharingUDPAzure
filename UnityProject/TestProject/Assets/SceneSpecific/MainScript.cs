@@ -3,13 +3,19 @@ using System;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Windows.Speech;
-using UnityEngine.XR.WSA.Input;
 
 public class MainScript : MonoBehaviour, ICreateGameObjects
 {
+    // Text to display output messages on
     public TextMesh StatusDisplayTextMesh;
+
+    // GameObject to use as a marker to position the model (i.e. the house)
     public GameObject PositionalModel;
 
+    // Implementation of ICreateGameObject - because we are not creating a Unity primitive
+    // I've implemented this here and 'plugged it in' but our creation is very simple in
+    // that we duplicate the object that we're using as the PositionalModel (i.e. the
+    // house in my version).
     public void CreateGameObject(string gameObjectSpecifier, Action<GameObject> callback)
     {
         // Right now, we know how to create one type of thing and we do it in the most
@@ -29,15 +35,12 @@ public class MainScript : MonoBehaviour, ICreateGameObjects
     }
     void Start()
     {
+        // Set up our keyword handling. Originally, I imagined more than one keyword but
+        // we ended up just with "Done" here.
         var keywords = new[]
         {
             new { Keyword = "done", Handler = (Action)this.OnDoneKeyword }
         };
-        SharedHologramsController.Instance.SceneReady += OnSceneReady;
-        SharedHologramsController.Instance.Creator.BusyStatusChanged += OnBusyStatusChanged;
-        SharedHologramsController.Instance.Creator.HologramCreatedRemotely += OnRemoteHologramCreated;
-        SharedHologramsController.Instance.Creator.GameObjectCreator = this;
-
         this.keywordRecognizer = new KeywordRecognizer(keywords.Select(k => k.Keyword).ToArray());
 
         this.keywordRecognizer.OnPhraseRecognized += (e) =>
@@ -60,6 +63,13 @@ public class MainScript : MonoBehaviour, ICreateGameObjects
                 this.SetStatusDisplayText("I might have missed what you said...");
             }
         };
+        // We need to know when various things happen with the shared holograms controller.
+        SharedHologramsController.Instance.SceneReady += OnSceneReady;
+        SharedHologramsController.Instance.Creator.BusyStatusChanged += OnBusyStatusChanged;
+        SharedHologramsController.Instance.Creator.HologramCreatedRemotely += OnRemoteHologramCreated;
+        SharedHologramsController.Instance.Creator.GameObjectCreator = this;
+
+        // Wait to see whether we should make the positional model active or not.
         this.PositionalModel.SetActive(false);
         this.SetStatusDisplayText("waiting...");
     }
@@ -111,22 +121,37 @@ public class MainScript : MonoBehaviour, ICreateGameObjects
         else
         {
             this.SetStatusDisplayText("detected no other devices...");
+
+            // We need this user to position the model so switch it on
             this.PositionalModel.SetActive(true);
             this.SetStatusDisplayText("walk to position the house then say 'done'");
+
+            // Wait for the 'done' keyword.
             this.keywordRecognizer.Start();
         }
     }
     void OnRemoteHologramCreated(object sender, HologramEventArgs e)
     {
+        // Someone has beaten this user to positioning the model
+        // turn off the model.
         this.PositionalModel.SetActive(false);
+
         this.SetStatusDisplayText("sync'd...");
+
+        // Stop waiting for the 'done' keyword (if we are)
         this.keywordRecognizer.Stop();
+
         this.houseGameObject = GameObject.Find(e.ObjectId.ToString());
+
+        // Make sure we can manipulate what the other user has placed.
         this.AddManipulations();
     }
     void AddManipulations()
     {
         this.SetStatusDisplayText("say 'move', 'rotate' or 'scale'");
+
+        // The Manipulations script contains a keyword recognizer for 'move', 'rotate', 'scale'
+        // and some basic logic to wire those to hand manipulations
         this.houseGameObject.AddComponent<Manipulations>();
     }
     void SetStatusDisplayText(string text)
