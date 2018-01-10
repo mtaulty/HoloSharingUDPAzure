@@ -13,8 +13,19 @@
     using SharedHolograms.AzureBlobs;
 #endif
 
+    /// <summary>
+    /// Note - I need to give some thought to the various threads that might be running through this code
+    /// and the various shared structures that they might access. I haven't really done that just yet
+    /// (a bit of a cop out) so be aware that it wouldn't surprise me if this breaks down a bit under
+    /// stress and especially around thread pool threads coming back from the async UDP work and
+    /// then calling potentially concurrently into this code.
+    /// </summary>
     public class SharedCreator
     {
+        public event EventHandler<BusyStatusChangedEventArgs> BusyStatusChanged;
+        public event EventHandler<HologramEventArgs> HologramCreatedRemotely;
+        public event EventHandler<HologramEventArgs> HologramDeletedRemotely;
+
         public SharedCreator(
             MessageService messageService,
             AzureStorageDetails storageDetails,
@@ -45,6 +56,8 @@
             Vector3 scale,
             Action<GameObject> callback)
         {
+            this.FireBusy();
+
             CreateGameObject(
                 gameObjectType,
                 position,
@@ -56,6 +69,20 @@
                     this.HandleLocallyCreateGameObject(gameObject, gameObjectType, callback);
                 }
             );
+        }
+        void FireHologramCreatedRemotely(Guid objectId)
+        {
+            if (this.HologramCreatedRemotely != null)
+            {
+                this.HologramCreatedRemotely(this, new HologramEventArgs(objectId));
+            }
+        }
+        void FireBusy(bool busy = true)
+        {
+            if (this.BusyStatusChanged != null)
+            {
+                this.BusyStatusChanged(this, new BusyStatusChangedEventArgs(busy));
+            }
         }
         void RegisterMessageHandlers()
         {
@@ -147,7 +174,8 @@
                         }
                         else
                         {
-                            // TODO: figure what we do here.
+                            // TODO: figure what we do here and make sure that if we do it
+                            // then we don't forget to clear our busy status too.
                         }
                     }
                 );
@@ -204,6 +232,7 @@
             {
                 callback(gameObject);
             }
+            FireBusy(false);
         }
         public void Delete(GameObject gameObject)
         {
@@ -233,6 +262,8 @@
 
             if (message != null)
             {
+                this.FireBusy();
+
                 // Make the object locally first - note the effective dummy values for
                 // position and forward.
                 CreateGameObject(
@@ -250,6 +281,9 @@
         }
         void HandleRemotelyCreatedGameObject(GameObject gameObject, CreatedObjectMessage message)
         {
+            // TODO: Many ways through the code in this function that would not result
+            // in us clearing our 'busy' status.
+
             bool newAnchor = false;
 
             // Do we already know the anchor that the GameObject is associated with?
@@ -272,6 +306,8 @@
 
             this.sharedObjectsInSceneMessages.Add(message);
 
+            this.ConfigureTransformSynchronizer(gameObject);
+
 #if !UNITY_EDITOR
             if (newAnchor)
             {
@@ -289,13 +325,26 @@
                             WorldAnchorImportExportHelper.ImportWorldAnchorToGameObject(
                                 anchorObject,
                                 bits,
-                                null);
+                                imported =>
+                                {
+                                    this.FireBusy(false);
+                                    this.FireHologramCreatedRemotely(new Guid(message.ObjectId));
+                                }
+                            );
                         }                               
                     }
                 );
             }
+#else
+        this.FireHologramCreatedRemotely(new Guid(message.ObjectId));
 #endif
-            this.ConfigureTransformSynchronizer(gameObject);
+        }
+        void FireHologramDeletedRemotely(Guid objectId)
+        {
+            if (this.HologramDeletedRemotely != null)
+            {
+                this.HologramDeletedRemotely(this, new HologramEventArgs(objectId));
+            }
         }
         void OnObjectDeletedRemotely(object obj)
         {
@@ -304,8 +353,8 @@
             if (msg != null)
             {
                 var gameObject = GameObject.Find(msg.ObjectId);
-
                 this.DeleteInternal(gameObject, false);
+                this.FireHologramDeletedRemotely(new Guid(msg.ObjectId));
             }
         }
         void CreateGameObject(
@@ -383,7 +432,7 @@
             // running for very long and we haven't any content of our own then we probably
             // multicasted to find one and got one so we should take a look at the first
             // one that we find.
-            if ((this.Uptime.TotalSeconds <= NEW_UPTIME_SECS) && !this.existingDeviceAcknowledged)
+            if (this.IsWithinDeviceDiscoveryWindow && !this.existingDeviceAcknowledged)
             {
                 this.existingDeviceAcknowledged = true;
 
@@ -439,11 +488,33 @@
                 this.OnObjectCreatedRemotely(message);
             }
         }
+        public SceneReadyStatus SceneStatus
+        {
+            get
+            {
+                var status = 
+                    this.existingDeviceAcknowledged ? SceneReadyStatus.OtherDevicesInScene : SceneReadyStatus.Waiting;
+
+                if ((status != SceneReadyStatus.OtherDevicesInScene) &&
+                    (!this.IsWithinDeviceDiscoveryWindow))
+                {
+                    status = SceneReadyStatus.NoOtherDevicesInScene;
+                }
+                return (status);
+            }
+        }
         TimeSpan Uptime
         {
             get
             {
                 return (DateTime.Now - this.startTime);
+            }
+        }
+        bool IsWithinDeviceDiscoveryWindow
+        {
+            get
+            {
+                return (this.Uptime.TotalSeconds <= NEW_UPTIME_SECS);
             }
         }
         bool existingDeviceAcknowledged;
@@ -454,6 +525,6 @@
         SynchronizationDetails syncDetails;
         Guid deviceId;
         DateTime startTime;
-        const int NEW_UPTIME_SECS = 15;
+        const int NEW_UPTIME_SECS = 5;
     }
 }

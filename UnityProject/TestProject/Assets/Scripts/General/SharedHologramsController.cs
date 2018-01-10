@@ -14,6 +14,8 @@
 
         public SynchronizationDetails SynchronizationDetails;
 
+        public event EventHandler<SceneReadyEventArgs> SceneReady;
+
         public SharedHologramsController()
         {
             if (Instance != null)
@@ -22,7 +24,7 @@
             }
             Instance = this;
         }
-        public void Start()
+        public void Awake()
         {
             var registrar = new MessageRegistrar();
 
@@ -40,6 +42,20 @@
                     this.SynchronizationDetails);
             }
         }
+        void Update()
+        {
+            SceneReadyStatus sceneStatus = SceneReadyStatus.Waiting;
+
+            if (!this.hasFiredSceneReady && 
+                ((sceneStatus = this.sharedCreator.SceneStatus) != SceneReadyStatus.Waiting))
+            {
+                this.hasFiredSceneReady = true;
+                if (this.SceneReady != null)
+                {
+                    this.SceneReady(this, new SceneReadyEventArgs(sceneStatus));
+                }
+            }
+        }
         public SharedCreator Creator
         {
             get
@@ -52,6 +68,7 @@
             get;
             private set;
         }
+        bool hasFiredSceneReady;
         SharedCreator sharedCreator;
         MessageService messageService;
     }
